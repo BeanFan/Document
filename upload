@@ -1,0 +1,108 @@
+const express = require('express');
+const { ApolloServer, gql } = require('apollo-server-express');
+const jwt = require('jsonwebtoken');
+const path = require('path';
+const { Query, Resolver, Ctx, Authorized } = require('type-graphql');
+
+const app = express();
+
+// 用于生成JWT令牌的密钥，请确保它是一个安全的随机字符串
+const SECRET_KEY = 'your-secret-key';
+
+// GraphQL模式文件（schema）
+@Resolver()
+class DownloadResolver {
+  @Authorized()
+  @Query(() => String)
+  async downloadTemplate(@Ctx() ctx: any) {
+    // 模拟身份验证和授权逻辑
+    const { authorization } = ctx.req.headers;
+    if (!authorization) {
+      throw new Error('未提供授权令牌');
+    }
+
+    try {
+      const token = authorization.replace('Bearer ', '');
+      const decoded = jwt.verify(token, SECRET_KEY);
+      // 在此可以进一步校验用户的权限或其他信息
+
+      // 模版文件路径
+      const templateFilePath = path.join(__dirname, 'templates', '模版.xlsx');
+
+      return templateFilePath;
+    } catch (error) {
+      throw new Error('无效的授权令牌');
+    }
+  }
+}
+
+const server = new ApolloServer({
+  typeDefs: gql`
+    type Query {
+      downloadTemplate: String!
+    }
+  `,
+  resolvers: [DownloadResolver],
+  context: ({ req }) => ({ req }),
+});
+
+server.applyMiddleware({ app });
+
+// 启动服务器
+app.listen({ port: 4000 }, () =>
+  console.log(`Server is running on http://localhost:4000/graphql`)
+);
+
+
+//前端
+
+
+<!-- App.vue -->
+<template>
+  <div>
+    <button v-if="isLoggedIn" @click="handleDownload">下载模版</button>
+    <div v-else>请先登录</div>
+  </div>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+  data() {
+    return {
+      isLoggedIn: false,
+    };
+  },
+  created() {
+    // 在这里进行用户登录验证逻辑，设置this.isLoggedIn为true或false
+    // 例如，可以检查本地存储中的令牌或其他身份验证信息
+    // 如果用户已经登录，设置this.isLoggedIn为true
+    // 如果用户未登录，设置this.isLoggedIn为false
+  },
+  methods: {
+    async handleDownload() {
+      try {
+        // 发起GraphQL请求
+        const response = await axios.post('/graphql', {
+          query: `
+            query {
+              downloadTemplate
+            }
+          `,
+        });
+
+        const { data } = response.data;
+
+        // 下载文件
+        const link = document.createElement('a');
+        link.href = `${window.location.origin}/${data}`;
+        link.download = '模版.xlsx';
+        link.click();
+      } catch (error) {
+        console.error('下载失败', error);
+      }
+    },
+  },
+};
+</script>
