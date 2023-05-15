@@ -1,0 +1,62 @@
+import { ApolloServer, gql } from 'apollo-server-express';
+import { GraphQLUpload, FileUpload } from 'graphql-upload';
+import { read, utils } from 'xlsx';
+import express from 'express';
+
+const app = express();
+
+const typeDefs = gql`
+  scalar Upload
+
+  type Mutation {
+    parseExcel(file: Upload!): [String!]!
+  }
+`;
+
+const resolvers = {
+  Upload: GraphQLUpload,
+  Mutation: {
+    parseExcel: async (_: any, { file }: { file: Promise<FileUpload> }) => {
+      const { createReadStream } = await file;
+      const stream = createReadStream();
+
+      return new Promise((resolve, reject) => {
+        const buffers: Buffer[] = [];
+
+        stream.on('data', (chunk: Buffer) => {
+          buffers.push(chunk);
+        });
+
+        stream.on('end', () => {
+          try {
+            const buffer = Buffer.concat(buffers);
+            const workbook = read(buffer, { type: 'buffer' });
+
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = utils.sheet_to_json(sheet);
+
+            const parsedData = data.map((item: any) => JSON.stringify(item));
+            resolve(parsedData);
+          } catch (error) {
+            reject(error);
+          }
+        });
+
+        stream.on('error', (error: Error) => {
+          reject(error);
+        });
+      });
+    },
+  },
+};
+
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+});
+
+server.applyMiddleware({ app });
+
+app.listen({ port: 4000 }, () =>
+  console.log(`Server is running on http://localhost:4000/graphql`)
+);
